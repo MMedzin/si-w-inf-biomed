@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, precision_score
 from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
 
 DATA_DIR = Path("../data/P1")
 AP_DATA = DATA_DIR / "ap_pro_data.xls"
@@ -25,7 +26,6 @@ def main() -> None:
     label_col = "Triage"
 
     ap_train, ap_test = train_test_split(ap_data, test_size=0.3, random_state=SEED)
-
     for i, (train_index, valid_index) in tqdm(
         enumerate(
             CV_SCHEME.split(
@@ -54,6 +54,13 @@ def main() -> None:
     summary_results.columns = summary_results.columns.map("_".join)
     summary_results.to_csv("AP_Leaderboard_summary.csv")
     best_model = summary_results.score_test_mean.sort_values(ascending=False).index[0]
+
+    results.loc[:, ["model", "score_test"]].rename(
+        columns={"score_test": "roc_auc_ovo_macro_test"}
+    ).boxplot(column="roc_auc_ovo_macro_test", by="model")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.savefig("Models_score_test_boxplot.png")
 
     predictor = TabularPredictor(label=label_col, eval_metric="roc_auc_ovo_macro").fit(
         train_data=ap_train
