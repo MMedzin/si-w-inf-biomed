@@ -1,0 +1,7 @@
+,Holdout results
+model,XGBoost
+params,"{'n_estimators': 10000, 'learning_rate': 0.1, 'n_jobs': -1, 'proc.max_category_levels': 100, 'objective': 'multi:softprob', 'booster': 'gbtree', 'num_class': 3}"
+roc_auc,0.8479192850160592
+accuracy,0.6666666666666666
+recall,0.557464041335009
+precision,0.703056203056203
