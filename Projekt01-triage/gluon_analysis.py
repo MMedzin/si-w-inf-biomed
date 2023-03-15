@@ -5,6 +5,8 @@ from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, precision_score
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
+import sys
+import logging
 
 DATA_DIR = Path("../data/P1")
 AP_DATA = DATA_DIR / "ap_pro_data.xls"
@@ -74,6 +76,22 @@ def preprocess_missing_values(data: pd.DataFrame, label_col: str) -> pd.DataFram
     return df.loc[~df.loc[:, label_col].isna()]
 
 
+def ag_log_init(log_path: Path) -> None:
+    formatter = logging.Formatter(
+        "{asctime}.{msecs:03.0f} {levelname:8} {name:64} {message}",
+        datefmt="%H:%M:%S",
+        style="{",
+    )
+
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setFormatter(formatter)
+
+    ag_logger = logging.getLogger("autogluon")
+    ag_logger.addHandler(file_handler)
+    ag_logger.setLevel(logging.INFO)
+    ag_logger.propagate = False
+
+
 def main() -> None:
     data_loaders = {
         "AP": load_ap_data,
@@ -86,6 +104,9 @@ def main() -> None:
         data, label_col = loader()
         data = preprocess_missing_values(data, label_col)
         data_train, data_test = train_test_split(data, test_size=0.3, random_state=SEED)
+        results_dir = RESULTS_DIR / name
+        results_dir.mkdir(exist_ok=True)
+        ag_log_init(results_dir / f"{name}_log.txt")
         for i, (train_index, valid_index) in tqdm(
             enumerate(
                 CV_SCHEME.split(
@@ -104,12 +125,12 @@ def main() -> None:
             leaderboard = predictor.leaderboard(validation_data)
             leaderboard["cv_iter"] = i
             leaderboard.to_csv(
-                RESULTS_DIR / f"{name}_leaderboard.csv", header=(i == 0), mode="a"
+                results_dir / f"{name}_leaderboard.csv", header=(i == 0), mode="a"
             )
 
-        results = pd.read_csv(RESULTS_DIR / f"{name}_leaderboard.csv", index_col=0)
+        results = pd.read_csv(results_dir / f"{name}_leaderboard.csv", index_col=0)
         results = results.reset_index(drop=True)
-        results.to_csv(RESULTS_DIR / f"{name}_leaderboard.csv")
+        results.to_csv(results_dir / f"{name}_leaderboard.csv")
 
         summary_results = (
             results.loc[:, ["model", "score_test", "score_val"]]
@@ -117,7 +138,7 @@ def main() -> None:
             .describe()
         )
         summary_results.columns = summary_results.columns.map("_".join)
-        summary_results.to_csv(RESULTS_DIR / f"{name}_leaderboard_summary.csv")
+        summary_results.to_csv(results_dir / f"{name}_leaderboard_summary.csv")
         best_model = summary_results.score_test_mean.sort_values(ascending=False).index[
             0
         ]
@@ -127,7 +148,7 @@ def main() -> None:
         ).boxplot(column="roc_auc_ovo_macro_test", by="model")
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
-        plt.savefig(RESULTS_DIR / f"{name}_models_score_test_boxplot.png")
+        plt.savefig(results_dir / f"{name}_models_score_test_boxplot.png")
 
         predictor = TabularPredictor(
             label=label_col, eval_metric="roc_auc_ovo_macro"
@@ -154,7 +175,7 @@ def main() -> None:
             },
             name="Holdout results",
         )
-        holdout_results.to_csv(RESULTS_DIR / f"{name}_best_model_holdout_results.csv")
+        holdout_results.to_csv(results_dir / f"{name}_best_model_holdout_results.csv")
 
 
 if __name__ == "__main__":
