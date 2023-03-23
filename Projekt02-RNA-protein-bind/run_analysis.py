@@ -7,6 +7,11 @@ FSHAPE_DIR = DATA_DIR / "hnrnpa2b1_binding_sites_fshape"
 EXPECTED_PATTERN_FILE = DATA_DIR / "hnrnpa2b1_expected_pattern.txt"
 
 
+class Sequence:
+    # TODO make class for mteadata storage
+    ...
+
+
 def load_expected_pattern() -> pd.DataFrame:
     return pd.read_csv(EXPECTED_PATTERN_FILE, delimiter="\t", header=None)
 
@@ -28,7 +33,11 @@ def main() -> None:
     expected_pattern = load_expected_pattern()
     pattern_length = expected_pattern.shape[0]
 
-    possibe_seqs = process_fshape_files(pattern_length)
+    possible_seqs = process_fshape_files(pattern_length)
+
+    # TODO cluster with KMEANS++, DBSCAN
+
+    # TODO use STUMPY to find consensus sequence from 3 biggest clusters
 
 
 if __name__ == "__main__":
