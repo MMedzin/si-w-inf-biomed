@@ -1,15 +1,17 @@
 from pathlib import Path
 import pandas as pd
+from sklearn.cluster import KMeans, DBSCAN
 
 
 DATA_DIR = Path("../data/P2/HNRNPA2B1")
 FSHAPE_DIR = DATA_DIR / "hnrnpa2b1_binding_sites_fshape"
 EXPECTED_PATTERN_FILE = DATA_DIR / "hnrnpa2b1_expected_pattern.txt"
 
+KMEANS_PARAMS = dict(
+    init="k-means++",
+)
 
-class Sequence:
-    # TODO make class for mteadata storage
-    ...
+DBSCAN_PARAMS = dict()
 
 
 def load_expected_pattern() -> pd.DataFrame:
