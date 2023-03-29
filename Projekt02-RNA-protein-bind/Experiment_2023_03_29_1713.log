@@ -1,0 +1,18 @@
+17:13:05,523 root INFO Running clustering for sequences of length 11...
+17:15:15,995 root INFO KMeans k selected: 5
+17:15:16,36 root INFO DBSCAN minimum samples value calculated as: 22
+17:15:20,220 root INFO Selected DBSCAN epsilon value: 4.500000
+17:15:33,141 root INFO Selected clustering: k
+17:15:33,143 root INFO Clustering done
+17:15:33,143 root INFO Running clustering for sequences of length 12...
+17:15:38,719 root INFO KMeans k selected: 5
+17:15:38,760 root INFO DBSCAN minimum samples value calculated as: 24
+17:15:42,364 root INFO Selected DBSCAN epsilon value: 5.000000
+17:15:53,811 root INFO Selected clustering: k
+17:15:53,812 root INFO Clustering done
+17:15:53,812 root INFO Running clustering for sequences of length 13...
+17:16:18,82 root INFO KMeans k selected: 4
+17:16:18,121 root INFO DBSCAN minimum samples value calculated as: 26
+17:16:22,561 root INFO Selected DBSCAN epsilon value: 5.000000
+17:16:35,865 root INFO Selected clustering: k
+17:16:35,867 root INFO Clustering done
