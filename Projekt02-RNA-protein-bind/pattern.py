@@ -35,14 +35,9 @@ class Pattern:
         self.aS = 0.0
 
     def matches_sequence(self, other_sequence: str, wildcard: str = "N") -> bool:
-        """Check if two sequences are matching"""
-        # assert len(self.sequence) == len(other_sequence), (
-        #     f"Sequences have different lengths:\n({self.seq_len}) {self.sequence}\n({len(other_sequence)}) {other_sequence}"
-        # )
+        """Check if two sequences are matching; `wildcard` can be any character"""
         if len(self.sequence) != len(other_sequence):
-            print(
-                f"Skipping a comparison: length mismatch ({self.seq_len} vs {len(other_sequence)})"
-            )
+            print(f"Skipping a comparison: length mismatch")
             return False
 
         for ch1, ch2 in zip(self.sequence, other_sequence):
