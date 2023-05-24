@@ -1,15 +1,9 @@
-from typing import Optional
-import numpy as np
-import pandas as pd
-from umap import UMAP
-import seaborn as sns
-import matplotlib.pyplot as plt
-from pathlib import Path
 import json
+from pathlib import Path
 
-
-def metric(seq_a: np.array, seq_b: np.array) -> float:
-    ...
+import pandas as pd
+import seaborn as sns
+from umap import UMAP
 
 
 def plot_clustering(
