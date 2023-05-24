@@ -1,20 +1,25 @@
+import logging
+from argparse import ArgumentParser
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans, DBSCAN
-from sklearn.neighbors import NearestNeighbors
+import stumpy
+from sklearn.cluster import DBSCAN, KMeans
 from sklearn.metrics import silhouette_score
+from sklearn.neighbors import NearestNeighbors
+from tqdm import tqdm
+
+from pattern import Pattern
 from utils import (
-    plot_clustering,
-    save_clusters,
     load_clusters,
+    plot_clustering,
     prepare_seq_list_for_clustering,
+    save_clusters,
 )
-import logging
-from datetime import datetime
-from argparse import ArgumentParser
 
 START_TIMESTAMP = datetime.now().strftime("%Y_%m_%d_%H%M")
 EXPERIMENT_NAME = f"Experiment_{START_TIMESTAMP}"
@@ -29,6 +34,7 @@ logging.basicConfig(
 
 DATA_DIR = Path("../data/P2/HNRNPA2B1")
 FSHAPE_DIR = DATA_DIR / "hnrnpa2b1_binding_sites_fshape"
+SEARCH_DIR = DATA_DIR / "hnrnpa2b1_search_fshape"
 EXPECTED_PATTERN_FILE = DATA_DIR / "hnrnpa2b1_expected_pattern.txt"
 PLOTS_DIR = Path("./plots") / EXPERIMENT_NAME
 PLOTS_DIR.mkdir(exist_ok=True)
@@ -42,13 +48,28 @@ KMEANS_KWARGS = dict(
 )
 KMEANS_K_VALUES = range(3, 20)
 
-DBSCAN_KWARGS = dict()
-DBSCAN_EPS_VALUES = []
-DBSCAN_MIN_SAMPLES_VALUES = []
+CLUSTER_COL = "cluster"
+REACT_COL = "vector"
+SEQ_COL = "sequence"
 
 
-def load_expected_pattern() -> pd.DataFrame:
-    return pd.read_csv(EXPECTED_PATTERN_FILE, delimiter="\t", header=None)
+def get_sequence_str(df: pd.DataFrame, str_col: int = 1) -> str:
+    return "".join(df.iloc[:, str_col].values)
+
+
+def get_reactive_vector(df: pd.DataFrame, reactive_col: int = 0) -> list[float]:
+    return df.loc[:, reactive_col].values.tolist()
+
+
+def load_expected_pattern() -> Pattern:
+    pattern_df = pd.read_csv(EXPECTED_PATTERN_FILE, delimiter="\t", header=None)
+    return Pattern(
+        sequence=get_sequence_str(pattern_df),
+        fSHAPE=get_reactive_vector(pattern_df),
+        file=str(EXPECTED_PATTERN_FILE.name),
+        start=pattern_df.index.min(),
+        end=pattern_df.index.max(),
+    )
 
 
 def process_fshape_files(length: int) -> list[pd.DataFrame]:
@@ -62,6 +83,41 @@ def process_fshape_files(length: int) -> list[pd.DataFrame]:
                 if (subseq.iloc[:, 0] > 1.0).any():
                     possible_seqs[window_size].append(subseq)
     return possible_seqs
+
+
+def search_for_patterns(motifs: dict) -> pd.DataFrame:
+    """Go get those patterns in the SEARCH_DIR"""
+
+    matching_patterns = []
+
+    for file in tqdm(SEARCH_DIR.iterdir()):
+        seq_df = pd.read_csv(file, delimiter="\t", header=None)
+
+        for window_size, patterns_to_match in motifs.items():
+            for i in range(0, len(seq_df) - window_size):
+                subseq = seq_df.iloc[i : i + window_size]
+                if not (subseq.iloc[:, 0] > 1.0).any():
+                    continue
+
+                subseq_str = get_sequence_str(subseq)
+                for ptm in patterns_to_match:
+                    assert isinstance(
+                        ptm, Pattern
+                    ), f"Expected Pattern but got {type(ptm)}"
+                    if not ptm.matches_sequence(subseq_str):
+                        continue
+
+                    new_pattern = Pattern(
+                        sequence=subseq_str,
+                        fSHAPE=get_reactive_vector(subseq),
+                        file=str(file.name),
+                        start=i,
+                        end=i + window_size,
+                    )
+                    new_pattern.associate(ptm)
+                    matching_patterns.append(new_pattern.to_dict())
+
+    return pd.DataFrame(matching_patterns)
 
 
 def tune_kmeans_k(
@@ -140,15 +196,13 @@ def tune_dbscan(
 
 def main(clusters_path: Optional[Path] = None) -> None:
     expected_pattern = load_expected_pattern()
-    pattern_length = expected_pattern.shape[0]
 
-    possible_seqs = process_fshape_files(pattern_length)
+    possible_seqs = process_fshape_files(expected_pattern.seq_len)
 
     if clusters_path is not None and clusters_path.exists():
         logging.info("Loading clusters from file %s", str(clusters_path))
         seq_clusters = load_clusters(clusters_path)
         logging.info("Clusters loaded succesfully")
-        print(seq_clusters)
     else:
         seq_clusters = {}
         for seq_len, seqs in possible_seqs.items():
@@ -204,12 +258,57 @@ def main(clusters_path: Optional[Path] = None) -> None:
             logging.info("Clustering done")
         save_clusters(seq_clusters, CLUSTERING_DIR / f"Clusters_{START_TIMESTAMP}.json")
 
-    sequences_dfs = {
-        seq_len: prepare_seq_list_for_clustering(seqs, col_num=1)
-        for seq_len, seqs in possible_seqs.items()
-    }
+    logging.info("Aggregating cluster info, reactiveness vectors and DNA sequences")
+    aggregated_data = dict()
+    for pattern_len in seq_clusters.keys():
+        # creating a new df - one row for one sequence
+        df = seq_clusters[pattern_len].rename(CLUSTER_COL).to_frame()
+        df[REACT_COL] = [get_reactive_vector(seq) for seq in possible_seqs[pattern_len]]
+        df[SEQ_COL] = [get_sequence_str(seq) for seq in possible_seqs[pattern_len]]
 
-    # TODO use STUMPY to find consensus sequence from 3 biggest clusters
+        # limit the data to only clusters with at least 3 members
+        cluster_sizes = df[CLUSTER_COL].value_counts()
+        cluster_sizes = cluster_sizes.loc[cluster_sizes > 3]
+        if len(cluster_sizes) > 3:
+            # limit to the 3 biggest clusters
+            cluster_sizes = cluster_sizes.iloc[:3]
+
+        top_clusters = cluster_sizes.index.tolist()
+        df = df.loc[df[CLUSTER_COL].isin(top_clusters)]
+        aggregated_data[pattern_len] = df.copy()
+
+    logging.info("Looking for motifs with STUMPY")
+    motifs = dict()
+    for motif_len in tqdm(seq_clusters.keys()):
+        consensus_patterns = []
+        agg_df = aggregated_data[motif_len]
+
+        for cluster_i in agg_df[CLUSTER_COL].unique():
+            one_cluster_df = agg_df.loc[agg_df[CLUSTER_COL] == cluster_i]
+            Rs = one_cluster_df[REACT_COL].values
+            Ss = one_cluster_df[SEQ_COL].values
+
+            radius, motif_idx, _ = stumpy.ostinato(Rs, motif_len)
+            if radius == np.inf:
+                logging.warning(
+                    "Motif? What's that? Using sequence #%s... (motif_len: %s, cluster_i: %s)",
+                    motif_idx,
+                    motif_len,
+                    cluster_i,
+                )
+            consensus_patterns.append(
+                Pattern(sequence=Ss[motif_idx], fSHAPE=Rs[motif_idx])
+            )
+
+        motifs[motif_len] = consensus_patterns
+
+    # add our OG pattern to the mix
+    motifs[expected_pattern.seq_len].append(expected_pattern)
+
+    logging.info("Searching for matching patterns in longer files from %s", SEARCH_DIR)
+    report = search_for_patterns(motifs)
+    report = report.dropna().sort_values(by="aS", ascending=True)
+    report.to_csv(f"result_{START_TIMESTAMP}.csv", index=False)
 
 
 if __name__ == "__main__":
